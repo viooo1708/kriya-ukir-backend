@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\ProductStatusController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\ReportController;
+use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -51,6 +52,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/orders/{order}/status', [ProductStatusController::class, 'store']);
 
         Route::get('/reports/summary', [ReportController::class, 'summary']);
+
+        Route::get('/users', [UserController::class, 'index']);
+        Route::get('/users/{user}', [UserController::class, 'show']);
+        Route::delete('/users/{user}', [UserController::class, 'destroy']);
     });
 });
 
