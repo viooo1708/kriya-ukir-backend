@@ -1,4 +1,3 @@
-// database/seeders/AttributeSeeder.php
 <?php
 
 namespace Database\Seeders;

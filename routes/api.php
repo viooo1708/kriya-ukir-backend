@@ -35,9 +35,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/orders/{order}', [OrderController::class, 'show']);
     Route::get('/orders/{order}/status', [ProductStatusController::class, 'index']);
 
-    Route::get('/notifications', [NotificationController::class, 'index']);
-    Route::post('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
-    Route::post('/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
+    // Route::get('/notifications', [NotificationController::class, 'index']);
+    // Route::post('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
+    // Route::post('/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
 
     Route::apiResource('users', UserController::class);
 
@@ -64,6 +64,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/users', [UserController::class, 'index']);
         Route::get('/users/{user}', [UserController::class, 'show']);
         Route::delete('/users/{user}', [UserController::class, 'destroy']);
+
+
     });
 });
 
