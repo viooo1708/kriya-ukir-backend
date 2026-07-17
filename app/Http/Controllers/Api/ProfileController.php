@@ -45,7 +45,9 @@ class ProfileController extends Controller
 
         if ($request->hasFile('foto')) {
             $path = $request->file('foto')->store('profile-photos', 'public');
-            $data['foto'] = Storage::url($path);
+
+            // MENGGUNAKAN url() AGAR MENGHASILKAN ALAMAT LENGKAP API (Contoh: http://127.0.0.1:8000/storage/...)
+            $data['foto'] = url(Storage::url($path));
         }
 
         $user->update($data);

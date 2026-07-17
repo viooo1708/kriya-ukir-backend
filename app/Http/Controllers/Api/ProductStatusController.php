@@ -28,6 +28,15 @@ class ProductStatusController extends Controller
      */
     public function store(Request $request, Order $order)
     {
+        // 1. Cek apakah status pesanan saat ini adalah 'diproses'
+        // Jika statusnya masih 'menunggu_konfirmasi', 'dibatalkan', atau 'selesai', blokir aksinya.
+        if ($order->status_pesanan !== 'diproses') {
+            return response()->json([
+                'message' => 'Gagal memperbarui progres. Tahapan produksi hanya bisa diperbarui jika status pesanan adalah "diproses".'
+            ], 422);
+        }
+
+        // 2. Jalankan validasi input seperti biasa
         $validator = Validator::make($request->all(), [
             'status' => 'required|in:persiapan,pengukiran,finishing,selesai',
             'keterangan' => 'nullable|string',
@@ -37,16 +46,20 @@ class ProductStatusController extends Controller
             return response()->json(['errors' => $validator->errors()], 422);
         }
 
+        // 3. Simpan tahapan produksi baru
         $status = $order->statusHistory()->create([
             'status' => $request->status,
             'keterangan' => $request->keterangan,
             'tanggal_update' => now(),
         ]);
 
+        // 4. Jika owner memilih tahapan produksi 'selesai',
+        // otomatis ubah juga status utama pesanannya menjadi 'selesai'
         if ($request->status === 'selesai') {
             $order->update(['status_pesanan' => 'selesai']);
         }
 
+        // 5. Kirim Notifikasi
         Notification::create([
             'user_id' => $order->user_id,
             'order_id' => $order->id,

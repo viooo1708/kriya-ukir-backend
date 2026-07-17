@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\AttributeController;
 
 /*
 |--------------------------------------------------------------------------
@@ -21,6 +22,7 @@ Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
 Route::get('/products', [ProductController::class, 'index']);
 Route::get('/products/{product}', [ProductController::class, 'show']);
+
 
 // ---- Perlu login (pelanggan & owner) ----
 Route::middleware('auth:sanctum')->group(function () {
@@ -37,6 +39,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
     Route::post('/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
 
+    Route::apiResource('users', UserController::class);
+
     // ---- Khusus pelanggan ----
     Route::middleware('role:pelanggan')->group(function () {
         Route::post('/orders', [OrderController::class, 'store']);
@@ -47,6 +51,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/products', [ProductController::class, 'store']);
         Route::put('/products/{product}', [ProductController::class, 'update']);
         Route::delete('/products/{product}', [ProductController::class, 'destroy']);
+
+        Route::get('/attributes', [AttributeController::class, 'index']);
+        Route::post('/attributes', [AttributeController::class, 'store']);
+        Route::delete('/attributes/{attribute}', [AttributeController::class, 'destroy']);
 
         Route::put('/orders/{order}', [OrderController::class, 'update']);
         Route::post('/orders/{order}/status', [ProductStatusController::class, 'store']);

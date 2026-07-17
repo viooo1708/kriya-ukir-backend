@@ -8,16 +8,14 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('notifications', function (Blueprint $table) {
+        Schema::create('owner_notifications', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('user_id')->constrained('users')->onDelete('cascade');
-            $table->foreignId('order_id')->nullable()->constrained('orders')->onDelete('cascade');
-            $table->string('title', 150);
+            $table->string('type'); // 'order', 'stock', dsb.
+            $table->string('title');
             $table->text('message');
+            $table->string('link')->nullable();
             $table->boolean('is_read')->default(false);
             $table->timestamps();
-
-            $table->index(['user_id', 'is_read']);
         });
     }
 

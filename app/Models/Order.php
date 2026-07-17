@@ -18,6 +18,7 @@ class Order extends Model
         'estimasi_biaya',
         'estimasi_waktu',
         'status_pesanan',
+        'catatan',
     ];
 
     protected function casts(): array

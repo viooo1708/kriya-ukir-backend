@@ -111,120 +111,44 @@ class OrderController extends Controller
 
     /**
      * Owner memperbarui data/status pesanan (konfirmasi, proses, batalkan, selesai).
-     */
+    */
     public function update(Request $request, Order $order)
-{
-    $validator = Validator::make($request->all(), [
+    {
+        $validated = $request->validate([
+            'status_pesanan' => 'required|in:menunggu_konfirmasi,diproses,dibatalkan,selesai',
+            'estimasi_biaya' => 'nullable|numeric',
+            'estimasi_waktu' => 'nullable|string|max:100',
+            'catatan' => 'nullable|string',
+            'tahap_produksi' => 'nullable|in:persiapan,pengukiran,finishing,selesai',
+        ]);
 
-        'status_pesanan' =>
-            'required|in:menunggu_konfirmasi,diproses,dibatalkan,selesai',
+        $order->update([
+            'estimasi_biaya' => $validated['estimasi_biaya'],
+            'estimasi_waktu' => $validated['estimasi_waktu'],
+            'status_pesanan' => $validated['status_pesanan'],
+            'catatan' => $validated['catatan'],
+        ]);
 
-        'estimasi_biaya' =>
-            'nullable|numeric|min:0',
+        if (!empty($validated['tahap_produksi'])) {
+            if ($validated['status_pesanan'] !== 'diproses') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Tahapan produksi hanya dapat diperbarui jika status pesanan adalah Diproses.'
+                ], 422);
+            }
 
-        'estimasi_waktu' =>
-            'nullable|string|max:100',
-
-        'catatan' =>
-            'nullable|string',
-
-    ]);
-
-
-    if ($validator->fails()) {
+            ProductStatus::create([
+                'order_id' => $order->id,
+                'status' => $validated['tahap_produksi'],
+                'keterangan' => $validated['catatan'],
+                'tanggal_update' => now(),
+            ]);
+        }
 
         return response()->json([
-            'errors' => $validator->errors()
-        ], 422);
-
+            'success' => true,
+            'message' => 'Pesanan berhasil diperbarui.',
+            'data' => $order->fresh()->load('latestStatus'),
+        ]);
     }
-
-
-
-    DB::transaction(function () use ($request, $order) {
-
-
-        // Update data pesanan
-        $order->update([
-
-            'status_pesanan' => $request->status_pesanan,
-
-            'estimasi_biaya' => $request->estimasi_biaya,
-
-            'estimasi_waktu' => $request->estimasi_waktu,
-
-            'catatan' => $request->catatan,
-
-        ]);
-
-
-
-        // Keterangan otomatis berdasarkan status
-        $keterangan = match ($request->status_pesanan) {
-
-
-            'menunggu_konfirmasi' =>
-                'Pesanan menunggu konfirmasi dari owner.',
-
-
-            'diproses' =>
-                'Pesanan sedang dalam proses produksi.',
-
-
-            'selesai' =>
-                'Pesanan telah selesai diproduksi dan siap dikirim.',
-
-
-            'dibatalkan' =>
-                'Pesanan dibatalkan oleh owner.',
-
-
-            default =>
-                'Status pesanan diperbarui.'
-
-        };
-
-
-
-        // Simpan riwayat status
-        $order->statusHistory()->create([
-
-            'status' => $request->status_pesanan,
-
-            'keterangan' => $keterangan,
-
-        ]);
-
-
-    });
-
-
-
-    Notification::create([
-
-        'user_id' => $order->user_id,
-
-        'order_id' => $order->id,
-
-        'title' => 'Status pesanan diperbarui',
-
-        'message' =>
-            "Pesanan {$order->kode_pesanan} kini berstatus {$order->status_pesanan}.",
-
-    ]);
-
-
-
-    return response()->json([
-
-        'message' => 'Pesanan berhasil diperbarui',
-
-        'data' => $order->fresh([
-            'product',
-            'specification',
-            'statusHistory'
-        ])
-
-    ]);
-}
 }
