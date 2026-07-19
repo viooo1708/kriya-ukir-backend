@@ -7,17 +7,18 @@ use App\Models\Notification;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\ProductStatus;
+use App\Events\NewNotificationEvent;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use App\Events\OrderCreated;
 
 class OrderController extends Controller
 {
-    /**
-     * Pelanggan: melihat riwayat pesanan miliknya.
-     * Owner: melihat seluruh data pesanan masuk.
-     */
+    // ID User Owner - SILAKAN SESUAIKAN DENGAN ID OWNER DI TABEL USERS ANDA
+    private const OWNER_ID = 1;
+
     public function index(Request $request)
     {
         $query = Order::with(['product', 'specification', 'latestStatus', 'user']);
@@ -31,9 +32,6 @@ class OrderController extends Controller
         return response()->json(['data' => $orders]);
     }
 
-    /**
-     * Menampilkan detail satu pesanan beserta spesifikasi & riwayat status.
-     */
     public function show(Request $request, Order $order)
     {
         if (! $request->user()->isOwner() && $order->user_id !== $request->user()->id) {
@@ -45,10 +43,6 @@ class OrderController extends Controller
         return response()->json(['data' => $order]);
     }
 
-    /**
-     * Pelanggan membuat pesanan baru beserta spesifikasi teknis.
-     * Estimasi biaya dihitung dari harga dasar produk + biaya tambahan spesifikasi.
-     */
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -103,15 +97,32 @@ class OrderController extends Controller
 
         $order->load(['product', 'specification', 'latestStatus']);
 
+        event(new OrderCreated($order));
+
+        // --- NOTIFIKASI KE OWNER (Ada pesanan baru) ---
+        $notifOwner = Notification::create([
+            'user_id' => self::OWNER_ID,
+            'title' => 'Pesanan Baru Masuk!',
+            'message' => 'Pesanan baru dengan kode ' . $order->kode_pesanan . ' menunggu konfirmasi.',
+            'is_read' => false,
+        ]);
+        broadcast(new NewNotificationEvent($notifOwner));
+
+        // --- NOTIFIKASI KE PELANGGAN (Konfirmasi pesanan diterima) ---
+        $notifCustomer = Notification::create([
+            'user_id' => $order->user_id,
+            'title' => 'Pesanan Berhasil Dibuat',
+            'message' => 'Pesanan ' . $order->kode_pesanan . ' telah diterima sistem.',
+            'is_read' => false,
+        ]);
+        broadcast(new NewNotificationEvent($notifCustomer));
+
         return response()->json([
             'message' => 'Pesanan berhasil dibuat',
             'data' => $order,
         ], 201);
     }
 
-    /**
-     * Owner memperbarui data/status pesanan (konfirmasi, proses, batalkan, selesai).
-    */
     public function update(Request $request, Order $order)
     {
         $validated = $request->validate([
@@ -144,6 +155,17 @@ class OrderController extends Controller
                 'tanggal_update' => now(),
             ]);
         }
+
+        // --- NOTIFIKASI KE PELANGGAN (Status diperbarui) ---
+        $statusText = str_replace('_', ' ', $validated['status_pesanan']);
+        $notifCustomer = Notification::create([
+            'user_id' => $order->user_id,
+            'title' => 'Pembaruan Status Pesanan',
+            'message' => 'Status pesanan ' . $order->kode_pesanan . ' telah menjadi: ' . ucwords($statusText) . '.',
+            'is_read' => false,
+        ]);
+        broadcast(new NewNotificationEvent($notifCustomer));
+        broadcast(new OrderCreated($order->fresh()));
 
         return response()->json([
             'success' => true,

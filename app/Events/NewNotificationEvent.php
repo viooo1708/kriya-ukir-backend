@@ -2,9 +2,9 @@
 
 namespace App\Events;
 
-use App\Models\OwnerNotification;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
+use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
@@ -15,22 +15,23 @@ class NewNotificationEvent implements ShouldBroadcast
 
     public $notification;
 
-    public function __construct(OwnerNotification $notification)
+    public function __construct($notification)
     {
         $this->notification = $notification;
     }
 
-    // Menggunakan Channel publik agar mudah didengar di lokal tanpa ribet autentikasi privat saat demo TA
+    // Menentukan channel mana yang akan menerima event ini
     public function broadcastOn(): array
     {
+        // Menggunakan PrivateChannel agar hanya user yang bersangkutan yang menerima
         return [
-            new Channel('owner-updates'),
+            new PrivateChannel('App.Models.User.' . $this->notification->user_id),
         ];
     }
 
-    // Nama event yang akan ditangkap oleh JavaScript Echo Anda
+    // Opsional: Menentukan nama event yang dikirimkan (alias)
     public function broadcastAs(): string
     {
-        return 'new-notification';
+        return 'NewNotificationEvent';
     }
 }
