@@ -38,7 +38,8 @@ class OrderController extends Controller
             return response()->json(['message' => 'Tidak diizinkan'], 403);
         }
 
-        $order->load(['product', 'specification', 'statusHistory', 'user']);
+        // Pastikan latestStatus ikut dimuat
+        $order->load(['product', 'specification', 'statusHistory', 'latestStatus', 'user']);
 
         return response()->json(['data' => $order]);
     }
