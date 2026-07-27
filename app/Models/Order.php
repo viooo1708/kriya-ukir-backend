@@ -17,6 +17,8 @@ class Order extends Model
         'tanggal_pesanan',
         'jumlah',
         'estimasi_biaya',
+        'jumlah_dp',
+        'status_pembayaran',
         'estimasi_waktu',
         'status_pesanan',
         'catatan',
@@ -25,8 +27,9 @@ class Order extends Model
     protected function casts(): array
     {
         return [
-            'tanggal_pesanan' => 'date',
+            'tanggal_pesanan' => 'datetime:Y-m-d H:i:s',
             'estimasi_biaya' => 'decimal:2',
+            'jumlah_dp' => 'decimal:2',
         ];
     }
 
@@ -59,5 +62,10 @@ class Order extends Model
     public function notifications()
     {
         return $this->hasMany(Notification::class);
+    }
+
+    public function chats()
+    {
+        return $this->hasMany(Chat::class);
     }
 }

@@ -56,6 +56,7 @@ class OrderController extends Controller
             'motif' => 'nullable|string|max:100',
             'catatan' => 'nullable|string',
             'biaya_tambahan' => 'nullable|numeric|min:0',
+            'jumlah_dp' => 'nullable|numeric|min:0',
         ]);
 
         if ($validator->fails()) {
@@ -69,14 +70,23 @@ class OrderController extends Controller
         $estimasiBiaya = ($estimasiHargaDasar * $request->jumlah) + $biayaTambahan;
 
         $order = DB::transaction(function () use ($request, $product, $estimasiBiaya) {
+            // --- LOGIKA KODE PESANAN BERBASIS TANGGAL & NOMOR URUT ---
+            $today = now()->format('Ymd'); // Contoh: 20260727
+            $latestOrderToday = Order::whereDate('created_at', today())->count();
+            $nextNumber = str_pad($latestOrderToday + 1, 4, '0', STR_PAD_LEFT); // Format 4 digit: 0001, 0002, dst.
+            $kodePesanan = "ORD-{$today}-{$nextNumber}";
+            // --------------------------------------------------------
+
             $order = Order::create([
                 'user_id' => $request->user()->id,
                 'product_id' => $product ? $product->id : null,
                 'nama_custom' => $request->input('nama_custom'), // Simpan nama custom murni di sini
-                'kode_pesanan' => 'ORD-'.strtoupper(Str::random(8)),
-                'tanggal_pesanan' => now()->toDateString(),
+                'kode_pesanan' => $kodePesanan,
+                'tanggal_pesanan' => now(), // Menggunakan timestamp lengkap agar realtime
                 'jumlah' => $request->jumlah,
                 'estimasi_biaya' => $estimasiBiaya,
+                'jumlah_dp' => $request->input('jumlah_dp', 0), // <-- Simpan DP
+                'status_pembayaran' => $request->input('jumlah_dp', 0) > 0 ? 'dp_dibayar' : 'belum_bayar',
                 'estimasi_waktu' => 'Menunggu konfirmasi owner',
                 'status_pesanan' => 'menunggu_konfirmasi',
                 'catatan' => $request->catatan,
@@ -134,6 +144,8 @@ class OrderController extends Controller
         $validated = $request->validate([
             'status_pesanan' => 'required|in:menunggu_konfirmasi,diproses,dibatalkan,selesai',
             'estimasi_biaya' => 'nullable|numeric',
+            'jumlah_dp' => 'nullable|numeric|min:0',
+            'status_pembayaran' => 'nullable|in:belum_bayar,dp_dibayar,lunas',
             'estimasi_waktu' => 'nullable|string|max:100',
             'catatan' => 'nullable|string',
             'status' => 'nullable|in:persiapan,pengukiran,finishing', // Ubah dari tahap_produksi menjadi 'status'
@@ -141,6 +153,8 @@ class OrderController extends Controller
 
         $order->update([
             'estimasi_biaya' => $validated['estimasi_biaya'] ?? $order->estimasi_biaya,
+            'jumlah_dp' => $validated['jumlah_dp'] ?? $order->jumlah_dp,
+            'status_pembayaran' => $validated['status_pembayaran'] ?? $order->status_pembayaran,
             'estimasi_waktu' => $validated['estimasi_waktu'] ?? $order->estimasi_waktu,
             'status_pesanan' => $validated['status_pesanan'],
             'catatan' => $validated['catatan'] ?? $order->catatan,
