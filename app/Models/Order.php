@@ -12,6 +12,7 @@ class Order extends Model
     protected $fillable = [
         'user_id',
         'product_id',
+        'nama_custom',
         'kode_pesanan',
         'tanggal_pesanan',
         'jumlah',
@@ -51,7 +52,8 @@ class Order extends Model
 
     public function latestStatus()
     {
-        return $this->hasOne(ProductStatus::class)->latestOfMany('tanggal_update');
+        // return $this->hasOne(ProductStatus::class)->latestOfMany('tanggal_update');
+        return $this->hasOne(ProductStatus::class, 'order_id')->latest('id');
     }
 
     public function notifications()

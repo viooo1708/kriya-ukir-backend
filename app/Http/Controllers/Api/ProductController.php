@@ -7,25 +7,17 @@ use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
-use Illuminate\Support\Facades\URL;
 
 class ProductController extends Controller
 {
-    /**
-     * Menampilkan katalog produk (dapat diakses pelanggan & owner).
-     */
     public function index()
     {
         $products = Product::latest()->get();
 
         $products->transform(function ($product) {
-
-            if ($product->gambar) {
-
-                $product->gambar = url($product->gambar);
-
+            if ($product->gambar && !str_starts_with($product->gambar, 'http')) {
+                $product->gambar = asset('storage/' . $product->gambar);
             }
-
             return $product;
         });
 
@@ -34,15 +26,10 @@ class ProductController extends Controller
         ]);
     }
 
-    /**
-     * Menampilkan detail satu produk.
-     */
     public function show(Product $product)
     {
-        if ($product->gambar) {
-
-            $product->gambar = url($product->gambar);
-
+        if ($product->gambar && !str_starts_with($product->gambar, 'http')) {
+            $product->gambar = asset('storage/' . $product->gambar);
         }
 
         return response()->json([
@@ -50,9 +37,6 @@ class ProductController extends Controller
         ]);
     }
 
-    /**
-     * Menambahkan produk baru (khusus owner).
-     */
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -73,11 +57,16 @@ class ProductController extends Controller
         $data = $validator->validated();
 
         if ($request->hasFile('gambar')) {
-            $path = $request->file('gambar')->store('products', 'public');
-            $data['gambar'] = url(Storage::url($path));
+            // Simpan hanya path relatifnya (misal: products/xxx.jpg)
+            $data['gambar'] = $request->file('gambar')->store('products', 'public');
         }
 
         $product = Product::create($data);
+
+        // Ubah response path ke URL utuh untuk ditampilkan
+        if ($product->gambar) {
+            $product->gambar = asset('storage/' . $product->gambar);
+        }
 
         return response()->json([
             'message' => 'Produk berhasil ditambahkan',
@@ -85,9 +74,6 @@ class ProductController extends Controller
         ], 201);
     }
 
-    /**
-     * Mengedit produk (khusus owner).
-     */
     public function update(Request $request, Product $product)
     {
         $validator = Validator::make($request->all(), [
@@ -108,23 +94,32 @@ class ProductController extends Controller
         $data = $validator->validated();
 
         if ($request->hasFile('gambar')) {
-            $path = $request->file('gambar')->store('products', 'public');
-            $data['gambar'] = url(Storage::url($path));
+            // Hapus gambar lama jika ada
+            if ($product->gambar) {
+                Storage::disk('public')->delete(str_replace(asset('storage/'), '', $product->gambar));
+            }
+            $data['gambar'] = $request->file('gambar')->store('products', 'public');
         }
 
         $product->update($data);
 
+        $productResponse = $product->fresh();
+        if ($productResponse->gambar && !str_starts_with($productResponse->gambar, 'http')) {
+            $productResponse->gambar = asset('storage/' . $productResponse->gambar);
+        }
+
         return response()->json([
             'message' => 'Produk berhasil diperbarui',
-            'data' => $product->fresh(),
+            'data' => $productResponse,
         ]);
     }
 
-    /**
-     * Menghapus produk (khusus owner).
-     */
     public function destroy(Product $product)
     {
+        if ($product->gambar) {
+            Storage::disk('public')->delete(str_replace(asset('storage/'), '', $product->gambar));
+        }
+
         $product->delete();
 
         return response()->json(['message' => 'Produk berhasil dihapus']);

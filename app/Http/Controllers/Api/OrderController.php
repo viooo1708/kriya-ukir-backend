@@ -3,12 +3,12 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use Illuminate\Http\Request;
 use App\Models\Notification;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\ProductStatus;
 use App\Events\NewNotificationEvent;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
@@ -21,7 +21,7 @@ class OrderController extends Controller
 
     public function index(Request $request)
     {
-        $query = Order::with(['product', 'specification', 'latestStatus', 'user']);
+        $query = Order::with(['product', 'specification', 'statusHistory', 'latestStatus', 'user']);
 
         if (! $request->user()->isOwner()) {
             $query->where('user_id', $request->user()->id);
@@ -47,13 +47,13 @@ class OrderController extends Controller
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'product_id' => 'required|exists:products,id',
+            'product_id' => 'nullable|exists:products,id',
+            'nama_custom' => 'nullable|string|max:150', // Menerima nama custom dari Flutter
             'jumlah' => 'required|integer|min:1',
             'ukuran' => 'nullable|string|max:100',
             'material' => 'nullable|string|max:100',
             'motif_ukiran' => 'nullable|string|max:100',
             'motif' => 'nullable|string|max:100',
-            'finishing' => 'nullable|string|max:100',
             'catatan' => 'nullable|string',
             'biaya_tambahan' => 'nullable|numeric|min:0',
         ]);
@@ -62,20 +62,24 @@ class OrderController extends Controller
             return response()->json(['errors' => $validator->errors()], 422);
         }
 
-        $product = Product::findOrFail($request->product_id);
+        $product = $request->filled('product_id') ? Product::find($request->product_id) : null;
+        $estimasiHargaDasar = $product ? $product->estimasi_harga : 0;
+
         $biayaTambahan = $request->input('biaya_tambahan', 0);
-        $estimasiBiaya = ($product->estimasi_harga * $request->jumlah) + $biayaTambahan;
+        $estimasiBiaya = ($estimasiHargaDasar * $request->jumlah) + $biayaTambahan;
 
         $order = DB::transaction(function () use ($request, $product, $estimasiBiaya) {
             $order = Order::create([
                 'user_id' => $request->user()->id,
-                'product_id' => $product->id,
+                'product_id' => $product ? $product->id : null,
+                'nama_custom' => $request->input('nama_custom'), // Simpan nama custom murni di sini
                 'kode_pesanan' => 'ORD-'.strtoupper(Str::random(8)),
                 'tanggal_pesanan' => now()->toDateString(),
                 'jumlah' => $request->jumlah,
                 'estimasi_biaya' => $estimasiBiaya,
-                'estimasi_waktu' => '3-7 hari kerja',
+                'estimasi_waktu' => 'Menunggu konfirmasi owner',
                 'status_pesanan' => 'menunggu_konfirmasi',
+                'catatan' => $request->catatan,
             ]);
 
             $order->specification()->create([
@@ -83,40 +87,41 @@ class OrderController extends Controller
                 'material' => $request->material,
                 'motif_ukiran' => $request->motif_ukiran,
                 'motif' => $request->motif,
-                'finishing' => $request->finishing,
                 'catatan' => $request->catatan,
                 'estimasi_harga' => $estimasiBiaya,
             ]);
 
             $order->statusHistory()->create([
                 'status' => 'persiapan',
-                'keterangan' => 'Pesanan diterima dan menunggu konfirmasi owner',
+                'keterangan' => 'Pesanan diterima dan menunggu konfirmasi harga & waktu oleh owner',
             ]);
 
             return $order;
         });
 
-        $order->load(['product', 'specification', 'latestStatus']);
+        $order->load(['product', 'specification', 'latestStatus', 'user']);
 
-        event(new OrderCreated($order));
-
-        // --- NOTIFIKASI KE OWNER (Ada pesanan baru) ---
+        // --- NOTIFIKASI KE OWNER ---
         $notifOwner = Notification::create([
             'user_id' => self::OWNER_ID,
+            'order_id' => $order->id,
             'title' => 'Pesanan Baru Masuk!',
-            'message' => 'Pesanan baru dengan kode ' . $order->kode_pesanan . ' menunggu konfirmasi.',
+            'message' => 'Pelanggan ' . ($order->user->name ?? 'Seseorang') . ' membuat pesanan baru dengan kode ' . $order->kode_pesanan . '.',
             'is_read' => false,
         ]);
         broadcast(new NewNotificationEvent($notifOwner));
 
-        // --- NOTIFIKASI KE PELANGGAN (Konfirmasi pesanan diterima) ---
+        // --- NOTIFIKASI KE PELANGGAN ---
         $notifCustomer = Notification::create([
-            'user_id' => $order->user_id,
+            'user_id' => $request->user()->id,
+            'order_id' => $order->id,
             'title' => 'Pesanan Berhasil Dibuat',
-            'message' => 'Pesanan ' . $order->kode_pesanan . ' telah diterima sistem.',
+            'message' => 'Pesanan ' . $order->kode_pesanan . ' berhasil dibuat dan sedang menunggu konfirmasi owner.',
             'is_read' => false,
         ]);
         broadcast(new NewNotificationEvent($notifCustomer));
+
+        event(new OrderCreated($order));
 
         return response()->json([
             'message' => 'Pesanan berhasil dibuat',
@@ -131,17 +136,18 @@ class OrderController extends Controller
             'estimasi_biaya' => 'nullable|numeric',
             'estimasi_waktu' => 'nullable|string|max:100',
             'catatan' => 'nullable|string',
-            'tahap_produksi' => 'nullable|in:persiapan,pengukiran,finishing,selesai',
+            'status' => 'nullable|in:persiapan,pengukiran,finishing', // Ubah dari tahap_produksi menjadi 'status'
         ]);
 
         $order->update([
-            'estimasi_biaya' => $validated['estimasi_biaya'],
-            'estimasi_waktu' => $validated['estimasi_waktu'],
+            'estimasi_biaya' => $validated['estimasi_biaya'] ?? $order->estimasi_biaya,
+            'estimasi_waktu' => $validated['estimasi_waktu'] ?? $order->estimasi_waktu,
             'status_pesanan' => $validated['status_pesanan'],
-            'catatan' => $validated['catatan'],
+            'catatan' => $validated['catatan'] ?? $order->catatan,
         ]);
 
-        if (!empty($validated['tahap_produksi'])) {
+        // Jika status tahap produksi dikirimkan melalui form edit
+        if (!empty($validated['status'])) {
             if ($validated['status_pesanan'] !== 'diproses') {
                 return response()->json([
                     'success' => false,
@@ -149,29 +155,32 @@ class OrderController extends Controller
                 ], 422);
             }
 
+            // Simpan pembaruan tahap produksi baru ke tabel product_statuses
             ProductStatus::create([
                 'order_id' => $order->id,
-                'status' => $validated['tahap_produksi'],
-                'keterangan' => $validated['catatan'],
+                'status' => $validated['status'],
+                'keterangan' => $validated['catatan'] ?? 'Pembaruan tahap produksi',
                 'tanggal_update' => now(),
             ]);
         }
 
-        // --- NOTIFIKASI KE PELANGGAN (Status diperbarui) ---
+        // --- NOTIFIKASI KE PELANGGAN ---
         $statusText = str_replace('_', ' ', $validated['status_pesanan']);
         $notifCustomer = Notification::create([
             'user_id' => $order->user_id,
+            'order_id' => $order->id,
             'title' => 'Pembaruan Status Pesanan',
             'message' => 'Status pesanan ' . $order->kode_pesanan . ' telah menjadi: ' . ucwords($statusText) . '.',
             'is_read' => false,
         ]);
+
         broadcast(new NewNotificationEvent($notifCustomer));
         broadcast(new OrderCreated($order->fresh()));
 
         return response()->json([
             'success' => true,
             'message' => 'Pesanan berhasil diperbarui.',
-            'data' => $order->fresh()->load('latestStatus'),
+            'data' => $order->fresh()->load(['latestStatus', 'statusHistory']),
         ]);
     }
 }

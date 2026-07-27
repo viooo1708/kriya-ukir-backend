@@ -1,7 +1,7 @@
 <?php
 
 return [
-    'paths' => ['api/*', 'sanctum/csrf-cookie', 'broadcasting/*'],
+    'paths' => ['api/*', 'sanctum/csrf-cookie', 'broadcasting/*', 'storage/*'],
     'allowed_methods' => ['*'],
     'allowed_origins' => ['*'], // Berubah menjadi bintang (semua port diizinkan)
     'allowed_origins_patterns' => [],

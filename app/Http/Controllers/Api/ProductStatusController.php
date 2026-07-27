@@ -38,7 +38,7 @@ class ProductStatusController extends Controller
 
         // 2. Jalankan validasi input seperti biasa
         $validator = Validator::make($request->all(), [
-            'status' => 'required|in:persiapan,pengukiran,finishing,selesai',
+            'status' => 'required|in:persiapan,pengukiran,finishing',
             'keterangan' => 'nullable|string',
         ]);
 

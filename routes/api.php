@@ -23,6 +23,7 @@ Route::post('/login', [AuthController::class, 'login']);
 Route::get('/products', [ProductController::class, 'index']);
 Route::get('/products/{product}', [ProductController::class, 'show']);
 
+Route::get('/attributes', [AttributeController::class, 'index']);
 
 // ---- Perlu login (pelanggan & owner) ----
 Route::middleware('auth:sanctum')->group(function () {
@@ -52,7 +53,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('/products/{product}', [ProductController::class, 'update']);
         Route::delete('/products/{product}', [ProductController::class, 'destroy']);
 
-        Route::get('/attributes', [AttributeController::class, 'index']);
+        // Route::get('/attributes', [AttributeController::class, 'index']);
         Route::post('/attributes', [AttributeController::class, 'store']);
         Route::delete('/attributes/{attribute}', [AttributeController::class, 'destroy']);
 
