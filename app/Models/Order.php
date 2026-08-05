@@ -43,6 +43,12 @@ class Order extends Model
         return $this->belongsTo(Product::class);
     }
 
+    // --- TAMBAHKAN INI AGAR RELASI KE TABEL DETAIL ITEM AKTIF ---
+    public function orderItems()
+    {
+        return $this->hasMany(OrderItem::class);
+    }
+
     public function specification()
     {
         return $this->hasOne(ProductSpecification::class);
@@ -55,7 +61,6 @@ class Order extends Model
 
     public function latestStatus()
     {
-        // return $this->hasOne(ProductStatus::class)->latestOfMany('tanggal_update');
         return $this->hasOne(ProductStatus::class, 'order_id')->latest('id');
     }
 

@@ -35,6 +35,10 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/orders', [OrderController::class, 'index']);
     Route::get('/orders/{order}', [OrderController::class, 'show']);
+
+    // --- PINDAHKAN ROUTE INI KE LUAR GRUP ROLE OWNER AGAR PELANGGAN BISA AKSES ---
+    Route::put('/orders/{order}', [OrderController::class, 'update']);
+
     Route::get('/orders/{order}/status', [ProductStatusController::class, 'index']);
 
     Route::get('/notifications', [NotificationController::class, 'index']);
@@ -57,11 +61,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('/products/{product}', [ProductController::class, 'update']);
         Route::delete('/products/{product}', [ProductController::class, 'destroy']);
 
-        // Route::get('/attributes', [AttributeController::class, 'index']);
         Route::post('/attributes', [AttributeController::class, 'store']);
         Route::delete('/attributes/{attribute}', [AttributeController::class, 'destroy']);
 
-        Route::put('/orders/{order}', [OrderController::class, 'update']);
+        // (Route::put('/orders/{order}' sudah dipindah ke atas)
         Route::post('/orders/{order}/status', [ProductStatusController::class, 'store']);
 
         Route::get('/reports/summary', [ReportController::class, 'summary']);
@@ -69,8 +72,6 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/users', [UserController::class, 'index']);
         Route::get('/users/{user}', [UserController::class, 'show']);
         Route::delete('/users/{user}', [UserController::class, 'destroy']);
-
-
     });
 });
 
