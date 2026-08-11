@@ -17,7 +17,6 @@ class OrderItem extends Model
         'ukuran',
         'material',
         'motif_ukiran',
-        'motif',
         'catatan',
         'subtotal',
     ];

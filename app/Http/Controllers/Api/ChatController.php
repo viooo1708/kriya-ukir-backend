@@ -4,79 +4,67 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use App\Models\Chat;
 use App\Models\Order;
-use App\Models\Notification;
-use App\Events\MessageSent;
-use App\Events\NewNotificationEvent;
-use Illuminate\Support\Facades\Validator;
+use App\Models\User;
 
 class ChatController extends Controller
 {
-    private const OWNER_ID = 1; // Sesuaikan dengan ID owner Anda
+    private const OWNER_ID = 1; // Sesuaikan dengan ID user Owner Anda
+    private const OWNER_PHONE = '6283815535218'; // Ganti dengan nomor WhatsApp Owner (format 62...)
 
-    // Ambil semua riwayat chat berdasarkan order_id
-    public function index(Request $request, Order $order)
+    /**
+     * Generate URL WhatsApp untuk pesanan tertentu.
+     */
+    public function getWhatsAppUrl(Request $request, Order $order)
     {
+        // 1. Validasi hak akses (Hanya owner atau pembuat pesanan yang bisa akses)
         if (! $request->user()->isOwner() && $order->user_id !== $request->user()->id) {
             return response()->json(['message' => 'Tidak diizinkan'], 403);
         }
 
-        $chats = $order->chats()->with(['sender', 'receiver'])->oldest()->get();
-
-        // Tandai pesan yang diterima sebagai sudah dibaca
-        $order->chats()
-            ->where('receiver_id', $request->user()->id)
-            ->where('is_read', false)
-            ->update(['is_read' => true]);
-
-        return response()->json(['data' => $chats]);
-    }
-
-    // Kirim pesan baru
-    public function store(Request $request, Order $order)
-    {
-        if (! $request->user()->isOwner() && $order->user_id !== $request->user()->id) {
-            return response()->json(['message' => 'Tidak diizinkan'], 403);
+        // 2. Tentukan nomor penerima
+        if ($request->user()->isOwner()) {
+            // Jika Owner yang klik -> kirim ke Pelanggan
+            $targetUser = $order->user;
+            $rawPhone = $targetUser->no_hp ?? $targetUser->phone ?? null;
+        } else {
+            // Jika Pelanggan yang klik -> kirim ke Owner
+            $rawPhone = self::OWNER_PHONE;
         }
 
-        $validator = Validator::make($request->all(), [
-            'message' => 'required|string',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
+        if (! $rawPhone) {
+            return response()->json([
+                'message' => 'Nomor WhatsApp tujuan tidak ditemukan.'
+            ], 422);
         }
 
-        // Tentukan penerima: Jika pengirim owner, maka penerima adalah user pemilik pesanan, dan sebaliknya.
-        $receiverId = ($request->user()->id === self::OWNER_ID) ? $order->user_id : self::OWNER_ID;
+        // 3. Normalisasi format nomor (ubah awalan 0 / +62 menjadi 62)
+        $cleanPhone = preg_replace('/[^0-9]/', '', $rawPhone);
+        if (str_starts_with($cleanPhone, '0')) {
+            $cleanPhone = '62' . substr($cleanPhone, 1);
+        }
 
-        $chat = Chat::create([
-            'order_id' => $order->id,
-            'sender_id' => $request->user()->id,
-            'receiver_id' => $receiverId,
-            'message' => $request->message,
-            'is_read' => false,
-        ]);
+        // 4. Susun pesan default otomatis
+        $namaPengirim = $request->user()->name ?? 'Pelanggan';
+        $kodeOrder = $order->kode_pesanan;
+        $totalBiaya = number_format($order->estimasi_biaya, 0, ',', '.');
 
-        $chat->load(['sender', 'receiver']);
+        if ($request->user()->isOwner()) {
+            $text = "Halo {$order->user->name}, saya Owner Adi Ukiran. Terkait pesanan Anda *{$kodeOrder}*...";
+        } else {
+            $text = "Halo Owner Adi Ukiran, saya *{$namaPengirim}*. Saya ingin menanyakan tentang pesanan saya dengan nomor *{$kodeOrder}* (Total: Rp {$totalBiaya}).";
+        }
 
-        // Broadcast pesan secara real-time
-        broadcast(new MessageSent($chat))->toOthers();
-
-        // Kirim Notifikasi ke Penerima
-        $notif = Notification::create([
-            'user_id' => $receiverId,
-            'order_id' => $order->id,
-            'title' => 'Pesan Baru dari ' . ($request->user()->name ?? 'Seseorang'),
-            'message' => 'Ada pesan pada pesanan ' . $order->kode_pesanan,
-            'is_read' => false,
-        ]);
-        broadcast(new NewNotificationEvent($notif));
+        $whatsappUrl = "https://wa.me/{$cleanPhone}?text=" . urlencode($text);
 
         return response()->json([
-            'message' => 'Pesan berhasil dikirim',
-            'data' => $chat,
-        ], 201);
+            'success' => true,
+            'data' => [
+                'order_id' => $order->id,
+                'kode_pesanan' => $order->kode_pesanan,
+                'target_phone' => $cleanPhone,
+                'whatsapp_url' => $whatsappUrl,
+            ],
+        ]);
     }
 }

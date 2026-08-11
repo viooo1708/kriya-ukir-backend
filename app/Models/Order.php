@@ -20,6 +20,7 @@ class Order extends Model
         'jumlah_dp',
         'status_pembayaran',
         'estimasi_waktu',
+        'estimasi_selesai',
         'status_pesanan',
         'catatan',
     ];

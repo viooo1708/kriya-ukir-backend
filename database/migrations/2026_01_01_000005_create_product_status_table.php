@@ -11,7 +11,7 @@ return new class extends Migration
         Schema::create('product_status', function (Blueprint $table) {
             $table->id();
             $table->foreignId('order_id')->constrained('orders')->onDelete('cascade');
-            $table->enum('status', ['persiapan', 'pengukiran', 'finishing', 'selesai'])
+            $table->enum('status', ['persiapan', 'pengukiran', 'finishing'])
                   ->default('persiapan');
             $table->text('keterangan')->nullable();
             $table->timestamp('tanggal_update')->useCurrent();

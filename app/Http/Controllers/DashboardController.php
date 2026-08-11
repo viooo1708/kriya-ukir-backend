@@ -2,25 +2,44 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Order;
+use App\Models\Notification;
 use Illuminate\Http\Request;
 
 class DashboardController extends Controller
 {
     public function index()
     {
-        // Total pesanan yang sedang diproses (sebagai pembagi 100%)
-        $totalDiproses = \App\Models\Order::where('status_pesanan', 'diproses')->count();
+        // 1. Ambil ringkasan pesanan
+        $ringkasanRaw = Order::selectRaw("
+            COUNT(*) as total_pesanan,
+            SUM(CASE WHEN status_pesanan = 'diproses' THEN 1 ELSE 0 END) as total_diproses,
+            SUM(CASE WHEN status_pesanan = 'selesai' THEN 1 ELSE 0 END) as total_selesai,
+            SUM(CASE WHEN status_pesanan = 'dibatalkan' THEN 1 ELSE 0 END) as total_dibatalkan,
+            SUM(CASE WHEN status_pesanan != 'dibatalkan' THEN estimasi_biaya ELSE 0 END) as total_pendapatan_estimasi
+        ")->first();
 
-        // Hitung per tahapan berdasarkan status terakhir (latestStatus)
-        // Pastikan string 'persiapan', 'pengukiran', 'finishing' sama persis dengan di database
-        $tahapPersiapan = \App\Models\Order::where('status_pesanan', 'diproses')
-                            ->whereHas('latestStatus', fn($q) => $q->where('status', 'persiapan'))->count();
+        $totalDiproses = (int) ($ringkasanRaw->total_diproses ?? 0);
 
-        $tahapPengukiran = \App\Models\Order::where('status_pesanan', 'diproses')
-                            ->whereHas('latestStatus', fn($q) => $q->where('status', 'pengukiran'))->count();
+        $ringkasan = [
+            'total_pesanan' => (int) ($ringkasanRaw->total_pesanan ?? 0),
+            'total_diproses' => $totalDiproses,
+            'total_selesai' => (int) ($ringkasanRaw->total_selesai ?? 0),
+            'total_dibatalkan' => (int) ($ringkasanRaw->total_dibatalkan ?? 0),
+            'total_pendapatan_estimasi' => (float) ($ringkasanRaw->total_pendapatan_estimasi ?? 0),
+        ];
 
-        $tahapFinishing = \App\Models\Order::where('status_pesanan', 'diproses')
-                            ->whereHas('latestStatus', fn($q) => $q->where('status', 'finishing'))->count();
+        // 2. Hitung tahapan progres produksi
+        $tahapan = \App\Models\ProductStatus::whereIn('order_id', function ($query) {
+                $query->select('id')->from('orders')->where('status_pesanan', 'diproses');
+            })
+            ->selectRaw("status, COUNT(*) as total")
+            ->groupBy('status')
+            ->pluck('total', 'status');
+
+        $tahapPersiapan = $tahapan['persiapan'] ?? 0;
+        $tahapPengukiran = $tahapan['pengukiran'] ?? 0;
+        $tahapFinishing = $tahapan['finishing'] ?? 0;
 
         $progressProduksi = [
             ['name' => 'Persiapan', 'value' => $totalDiproses > 0 ? round(($tahapPersiapan / $totalDiproses) * 100) : 0],
@@ -28,17 +47,18 @@ class DashboardController extends Controller
             ['name' => 'Finishing', 'value' => $totalDiproses > 0 ? round(($tahapFinishing / $totalDiproses) * 100) : 0],
         ];
 
-        $orders = \App\Models\Order::with(['user', 'product'])->latest()->take(5)->get();
+        // 3. AMBIL 10 PESANAN TERBARU
+        $orders = Order::with(['user:id,nama,name', 'orderItems.product:id,nama_product'])
+            ->latest('id')
+            ->take(10) // <-- Diubah menjadi 10
+            ->get();
 
-        // Hitung ringkasan
-        $ringkasan = [
-            'total_pesanan' => \App\Models\Order::count(),
-            'total_diproses' => $totalDiproses,
-            'total_selesai' => \App\Models\Order::where('status_pesanan', 'selesai')->count(),
-            'total_dibatalkan' => \App\Models\Order::where('status_pesanan', 'dibatalkan')->count(),
-            'total_pendapatan_estimasi' => \App\Models\Order::sum('estimasi_biaya'),
-        ];
+        // 4. Ambil aktivitas workshop terbaru
+        $aktivitas = Notification::where('user_id', 1)
+            ->latest('id')
+            ->take(5)
+            ->get();
 
-        return view('dashboard.index', compact('ringkasan', 'progressProduksi', 'orders'));
+        return view('dashboard.index', compact('ringkasan', 'progressProduksi', 'orders', 'aktivitas'));
     }
 }

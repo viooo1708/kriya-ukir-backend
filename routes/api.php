@@ -45,8 +45,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
     Route::post('/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
 
-    Route::get('/orders/{order}/chats', [ChatController::class, 'index']);
-    Route::post('/orders/{order}/chats', [ChatController::class, 'store']);
+    Route::get('/orders/{order}/whatsapp', [ChatController::class, 'getWhatsAppUrl']);
 
     Route::apiResource('users', UserController::class);
 
