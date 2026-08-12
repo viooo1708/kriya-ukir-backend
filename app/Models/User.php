@@ -19,6 +19,7 @@ class User extends Authenticatable
         'no_hp',
         'alamat',
         'foto',
+        'fcm_token',
     ];
 
     protected $hidden = [

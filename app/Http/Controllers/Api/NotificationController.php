@@ -43,4 +43,20 @@ class NotificationController extends Controller
             'message' => 'Semua notifikasi telah ditandai dibaca.'
         ]);
     }
+
+    public function updateFcmToken(Request $request)
+    {
+        $request->validate([
+            'fcm_token' => 'required|string',
+        ]);
+
+        $request->user()->update([
+            'fcm_token' => $request->fcm_token
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'FCM Token berhasil disimpan.'
+        ]);
+    }
 }

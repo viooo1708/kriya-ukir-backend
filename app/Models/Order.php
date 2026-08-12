@@ -23,6 +23,7 @@ class Order extends Model
         'estimasi_selesai',
         'status_pesanan',
         'catatan',
+        'gambar',
     ];
 
     protected function casts(): array
@@ -68,10 +69,5 @@ class Order extends Model
     public function notifications()
     {
         return $this->hasMany(Notification::class);
-    }
-
-    public function chats()
-    {
-        return $this->hasMany(Chat::class);
     }
 }

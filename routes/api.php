@@ -36,7 +36,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/orders', [OrderController::class, 'index']);
     Route::get('/orders/{order}', [OrderController::class, 'show']);
 
-    // --- PINDAHKAN ROUTE INI KE LUAR GRUP ROLE OWNER AGAR PELANGGAN BISA AKSES ---
     Route::put('/orders/{order}', [OrderController::class, 'update']);
 
     Route::get('/orders/{order}/status', [ProductStatusController::class, 'index']);
@@ -44,6 +43,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/notifications', [NotificationController::class, 'index']);
     Route::post('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
     Route::post('/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
+
+    // Endpoint baru untuk menyimpan FCM Token
+    Route::post('/update-fcm-token', [NotificationController::class, 'updateFcmToken']);
 
     Route::get('/orders/{order}/whatsapp', [ChatController::class, 'getWhatsAppUrl']);
 
@@ -63,7 +65,6 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/attributes', [AttributeController::class, 'store']);
         Route::delete('/attributes/{attribute}', [AttributeController::class, 'destroy']);
 
-        // (Route::put('/orders/{order}' sudah dipindah ke atas)
         Route::post('/orders/{order}/status', [ProductStatusController::class, 'store']);
 
         Route::get('/reports/summary', [ReportController::class, 'summary']);

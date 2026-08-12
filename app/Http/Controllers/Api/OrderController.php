@@ -13,11 +13,41 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use App\Events\OrderCreated;
+use Kreait\Laravel\Firebase\Facades\Firebase;
+use Kreait\Firebase\Messaging\CloudMessage;
+use Kreait\Firebase\Messaging\Notification as FirebaseNotification;
+use Illuminate\Support\Facades\Log;
 
 class OrderController extends Controller
 {
     // ID User Owner - SILAKAN SESUAIKAN DENGAN ID OWNER DI TABEL USERS ANDA
     private const OWNER_ID = 1;
+
+    /**
+     * Helper untuk mengirim Push Notification via FCM ke User tertentu
+     */
+    private function sendFcmNotification($user, $title, $message, $orderId = null)
+    {
+        if (!$user || !$user->fcm_token) {
+            return;
+        }
+
+        try {
+            $messaging = Firebase::messaging();
+
+            $cloudMessage = CloudMessage::new()
+                ->withToken($user->fcm_token)
+                ->withNotification(FirebaseNotification::create($title, $message))
+                ->withData([
+                    'order_id' => (string) ($orderId ?? ''),
+                    'click_action' => 'FLUTTER_NOTIFICATION_CLICK',
+                ]);
+
+            $messaging->send($cloudMessage);
+        } catch (\Exception $e) {
+            Log::error("Gagal mengirim FCM Push Notification: " . $e->getMessage());
+        }
+    }
 
     public function index(Request $request)
     {
@@ -83,7 +113,7 @@ class OrderController extends Controller
             'items.*.catatan' => 'nullable|string',
             'biaya_tambahan' => 'nullable|numeric|min:0',
             'jumlah_dp' => 'nullable|numeric|min:0',
-            'gambar' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048', // Tambahan validasi untuk file gambar
+            'gambar' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
         ]);
 
         if ($validator->fails()) {
@@ -93,7 +123,6 @@ class OrderController extends Controller
         // --- HANDLE UPLOAD GAMBAR ---
         $gambarPath = null;
         if ($request->hasFile('gambar')) {
-            // Menyimpan file ke folder 'storage/app/public/orders'
             $gambarPath = $request->file('gambar')->store('orders', 'public');
         }
 
@@ -101,7 +130,6 @@ class OrderController extends Controller
         $jumlahDp = $request->input('jumlah_dp', 0);
 
         $order = DB::transaction(function () use ($request, $biayaTambahan, $jumlahDp, $gambarPath) {
-            // 1. Hitung total estimasi biaya dari seluruh item di keranjang
             $totalEstimasiBiaya = 0;
             $processedItems = [];
 
@@ -127,13 +155,11 @@ class OrderController extends Controller
 
             $totalEstimasiBiaya += $biayaTambahan;
 
-            // 2. Generate Kode Pesanan Unik Berbasis Tanggal
             $today = now()->format('Ymd');
             $latestOrderToday = Order::whereDate('created_at', today())->count();
             $nextNumber = str_pad($latestOrderToday + 1, 4, '0', STR_PAD_LEFT);
             $kodePesanan = "ORD-{$today}-{$nextNumber}";
 
-            // 3. Simpan ke tabel Induk (Orders) termasuk path gambar jika ada
             $order = Order::create([
                 'user_id' => $request->user()->id,
                 'kode_pesanan' => $kodePesanan,
@@ -145,15 +171,13 @@ class OrderController extends Controller
                 'estimasi_waktu' => 'Menunggu konfirmasi owner',
                 'status_pesanan' => 'menunggu_konfirmasi',
                 'catatan' => $request->input('catatan', 'Pesanan via keranjang belanja'),
-                'gambar' => $gambarPath, // Menyimpan path gambar ke database (Pastikan kolom 'gambar' sudah ada di tabel orders)
+                'gambar' => $gambarPath,
             ]);
 
-            // 4. Simpan masing-masing produk ke tabel Detail (OrderItems)
             foreach ($processedItems as $item) {
                 $order->orderItems()->create($item);
             }
 
-            // 5. Catat history status awal
             $order->statusHistory()->create([
                 'status' => 'persiapan',
                 'keterangan' => 'Pesanan diterima dan menunggu konfirmasi harga & waktu oleh owner',
@@ -162,28 +186,37 @@ class OrderController extends Controller
             return $order;
         });
 
-        // Load relasi agar data lengkap dikembalikan ke Flutter
         $order->load(['orderItems.product', 'latestStatus', 'user']);
 
-        // --- NOTIFIKASI KE OWNER ---
+        // --- NOTIFIKASI KE OWNER (Database & FCM) ---
+        $owner = \App\Models\User::find(self::OWNER_ID);
+        $ownerTitle = 'Pesanan Baru Masuk!';
+        $ownerMessage = 'Pelanggan ' . ($order->user->name ?? 'Seseorang') . ' membuat pesanan baru dengan kode ' . $order->kode_pesanan . '.';
+
         $notifOwner = Notification::create([
             'user_id' => self::OWNER_ID,
             'order_id' => $order->id,
-            'title' => 'Pesanan Baru Masuk!',
-            'message' => 'Pelanggan ' . ($order->user->name ?? 'Seseorang') . ' membuat pesanan baru dengan kode ' . $order->kode_pesanan . '.',
+            'title' => $ownerTitle,
+            'message' => $ownerMessage,
             'is_read' => false,
         ]);
         broadcast(new NewNotificationEvent($notifOwner));
+        $this->sendFcmNotification($owner, $ownerTitle, $ownerMessage, $order->id);
 
-        // --- NOTIFIKASI KE PELANGGAN ---
+        // --- NOTIFIKASI KE PELANGGAN (Database & FCM) ---
+        $customer = $request->user();
+        $customerTitle = 'Pesanan Berhasil Dibuat';
+        $customerMessage = 'Pesanan ' . $order->kode_pesanan . ' berhasil dibuat dan sedang menunggu konfirmasi owner.';
+
         $notifCustomer = Notification::create([
-            'user_id' => $request->user()->id,
+            'user_id' => $customer->id,
             'order_id' => $order->id,
-            'title' => 'Pesanan Berhasil Dibuat',
-            'message' => 'Pesanan ' . $order->kode_pesanan . ' berhasil dibuat dan sedang menunggu konfirmasi owner.',
+            'title' => $customerTitle,
+            'message' => $customerMessage,
             'is_read' => false,
         ]);
         broadcast(new NewNotificationEvent($notifCustomer));
+        $this->sendFcmNotification($customer, $customerTitle, $customerMessage, $order->id);
 
         event(new OrderCreated($order));
 
@@ -195,7 +228,6 @@ class OrderController extends Controller
 
     public function update(Request $request, Order $order)
     {
-        // 1. Cek apakah user yang login adalah Owner atau Pemilik Pesanan tersebut
         if (! $request->user()->isOwner() && $order->user_id !== $request->user()->id) {
             return response()->json(['message' => 'Tidak diizinkan'], 403);
         }
@@ -207,19 +239,17 @@ class OrderController extends Controller
             ], 422);
         }
 
-        // 2. Gunakan 'sometimes' dan tambahkan validasi tanggal estimasi_selesai
         $validated = $request->validate([
             'status_pesanan' => 'sometimes|required|in:menunggu_konfirmasi,diproses,dibatalkan,selesai',
             'estimasi_biaya' => 'nullable|numeric',
             'jumlah_dp' => 'nullable|numeric|min:0',
             'status_pembayaran' => 'nullable|in:belum_bayar,dp_dibayar,lunas',
             'estimasi_waktu' => 'nullable|string|max:100',
-            'estimasi_selesai' => 'nullable|date', // <-- Tambahan input perkiraan tanggal selesai
+            'estimasi_selesai' => 'nullable|date',
             'catatan' => 'nullable|string',
             'status' => 'nullable|in:persiapan,pengukiran,finishing',
         ]);
 
-        // 3. Jika yang melakukan request adalah PELANGGAN (bukan owner)
         if (! $request->user()->isOwner()) {
             if (isset($validated['status_pesanan']) && $validated['status_pesanan'] !== 'dibatalkan') {
                 return response()->json([
@@ -236,7 +266,6 @@ class OrderController extends Controller
             }
         }
 
-        // 4. Proses update data pesanan secara aman (termasuk estimasi_selesai)
         $order->update([
             'estimasi_biaya' => $request->user()->isOwner() ? ($validated['estimasi_biaya'] ?? $order->estimasi_biaya) : $order->estimasi_biaya,
             'jumlah_dp' => $request->user()->isOwner() ? ($validated['jumlah_dp'] ?? $order->jumlah_dp) : $order->jumlah_dp,
@@ -263,11 +292,13 @@ class OrderController extends Controller
             ]);
         }
 
-        // --- NOTIFIKASI ---
+        // --- NOTIFIKASI SAAT UPDATE ---
         $statusPesananBaru = $validated['status_pesanan'] ?? $order->status_pesanan;
         $statusText = str_replace('_', ' ', $statusPesananBaru);
 
         $targetUserId = $request->user()->isOwner() ? $order->user_id : self::OWNER_ID;
+        $targetUser = \App\Models\User::find($targetUserId);
+
         $notifTitle = $request->user()->isOwner() ? 'Pembaruan Status Pesanan' : 'Pesanan Dibatalkan Pelanggan';
         $notifMessage = $request->user()->isOwner()
             ? 'Status pesanan ' . $order->kode_pesanan . ' telah menjadi: ' . ucwords($statusText) . '.'
@@ -283,6 +314,9 @@ class OrderController extends Controller
 
         broadcast(new NewNotificationEvent($notification));
         broadcast(new OrderCreated($order->fresh()));
+
+        // Kirim Push Notification FCM ke Target User
+        $this->sendFcmNotification($targetUser, $notifTitle, $notifMessage, $order->id);
 
         return response()->json([
             'success' => true,
