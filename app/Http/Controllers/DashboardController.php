@@ -10,13 +10,20 @@ class DashboardController extends Controller
 {
     public function index()
     {
-        // 1. Ambil ringkasan pesanan
+        // 1. Ambil ringkasan pesanan & hitung pendapatan dinamis (Lunas/Selesai = Full, DP Sudah Dibayar = 40%)
         $ringkasanRaw = Order::selectRaw("
             COUNT(*) as total_pesanan,
             SUM(CASE WHEN status_pesanan = 'diproses' THEN 1 ELSE 0 END) as total_diproses,
             SUM(CASE WHEN status_pesanan = 'selesai' THEN 1 ELSE 0 END) as total_selesai,
             SUM(CASE WHEN status_pesanan = 'dibatalkan' THEN 1 ELSE 0 END) as total_dibatalkan,
-            SUM(CASE WHEN status_pesanan != 'dibatalkan' THEN estimasi_biaya ELSE 0 END) as total_pendapatan_estimasi
+            SUM(
+                CASE
+                    WHEN status_pesanan = 'dibatalkan' THEN 0
+                    WHEN status_pesanan = 'selesai' OR status_pembayaran = 'lunas' THEN estimasi_biaya
+                    WHEN status_pembayaran = 'dp_dibayar' THEN (estimasi_biaya * 0.40)
+                    ELSE 0
+                END
+            ) as total_pendapatan_estimasi
         ")->first();
 
         $totalDiproses = (int) ($ringkasanRaw->total_diproses ?? 0);
@@ -50,7 +57,7 @@ class DashboardController extends Controller
         // 3. AMBIL 10 PESANAN TERBARU
         $orders = Order::with(['user:id,nama,name', 'orderItems.product:id,nama_product'])
             ->latest('id')
-            ->take(10) // <-- Diubah menjadi 10
+            ->take(10)
             ->get();
 
         // 4. Ambil aktivitas workshop terbaru

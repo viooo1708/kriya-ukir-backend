@@ -19,11 +19,13 @@ class Order extends Model
         'estimasi_biaya',
         'jumlah_dp',
         'status_pembayaran',
+        'biaya_dikonfirmasi',
         'estimasi_waktu',
         'estimasi_selesai',
         'status_pesanan',
         'catatan',
         'gambar',
+        'bukti_pembayaran',
     ];
 
     protected function casts(): array
@@ -32,6 +34,7 @@ class Order extends Model
             'tanggal_pesanan' => 'datetime:Y-m-d H:i:s',
             'estimasi_biaya' => 'decimal:2',
             'jumlah_dp' => 'decimal:2',
+            'biaya_dikonfirmasi' => 'boolean',
         ];
     }
 
@@ -45,7 +48,6 @@ class Order extends Model
         return $this->belongsTo(Product::class);
     }
 
-    // --- TAMBAHKAN INI AGAR RELASI KE TABEL DETAIL ITEM AKTIF ---
     public function orderItems()
     {
         return $this->hasMany(OrderItem::class);
@@ -58,12 +60,14 @@ class Order extends Model
 
     public function statusHistory()
     {
-        return $this->hasMany(ProductStatus::class)->orderByDesc('tanggal_update');
+        return $this->hasMany(ProductStatus::class)
+            ->orderByDesc('tanggal_update');
     }
 
     public function latestStatus()
     {
-        return $this->hasOne(ProductStatus::class, 'order_id')->latest('id');
+        return $this->hasOne(ProductStatus::class, 'order_id')
+            ->latest('id');
     }
 
     public function notifications()
